@@ -56,10 +56,10 @@ for message in st.session_state.messages:
 # 3. ENTRADA DE CHAT
 if prompt := st.chat_input(f"Fale com o Rike, {st.session_state.nome_usuario}..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar=URL_AVATAR_USUARIO):https://imgur.com/a/hXdBDw3
+    with st.chat_message("user", avatar=https://imgur.com/a/hXdBDw3):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar=URL_AVATAR_RIKE):https://imgur.com/a/5hDVWst
+    with st.chat_message("assistant", avatar=https://imgur.com/a/5hDVWst):
         try:
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "system", "content": instrucao_sistema}] + st.session_state.messages,
