@@ -2,71 +2,73 @@ import streamlit as st
 from groq import Groq
 
 # --- CONFIGURAÇÃO ---
-# Coloque sua chave da Groq aqui entre as aspas
 CHAVE_GROQ = "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" 
+client = Groq(api_key=CHAVE_GROQ)
 
-try:
-    client = Groq(api_key=CHAVE_GROQ)
-except Exception as e:
-    st.error(f"Erro ao configurar a chave: {e}")
+# LINKS DAS IMAGENS (Substitua pelos links das suas fotos)
+URL_AVATAR_RIKE = "https://cdn-icons-png.flaticon.com/512/4712/4712035.png" # Exemplo de robô
+URL_AVATAR_USUARIO = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png" # Exemplo de humano
 
-NOME_IA = "Rike"
+st.set_page_config(page_title="Rike - Assistente Pessoal", page_icon="🤖", layout="wide")
 
-# Configuração visual do site
-st.set_page_config(page_title=f"Assistente {NOME_IA}", page_icon="⚡")
-st.title(f"⚡ {NOME_IA} - Inteligência Analítica")
-st.caption("Powered by Groq | Llama 3.3 70B")
-
-# Personalidade e Instruções de Sistema
-instrucao_sistema = f"""
-Seu nome é {NOME_IA}. Você é o assistente pessoal do Richard.
-Estilo: Técnico, inteligente e direto. 
-Entenda gírias, contextos complexos e não tenha dificuldade com palavras informais.
-Responda de forma útil e com bom humor sutil.
-"""
-
-# Inicializa o histórico de mensagens
+# Inicialização de Variáveis de Sessão
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "nome_usuario" not in st.session_state:
+    st.session_state.nome_usuario = None
 
-# Exibe as mensagens anteriores na tela
+# Interface Lateral (Configurações)
+with st.sidebar:
+    st.title("⚙️ Configurações")
+    if st.button("Limpar Conversa"):
+        st.session_state.messages = []
+        st.rerun()
+    st.info("O Rike agora usa Llama 3.3 com processamento de linguagem natural avançado.")
+
+st.title("🤖 Rike - Inteligência Analítica")
+
+# 1. LÓGICA DE IDENTIFICAÇÃO (Pergunta o nome se não souber)
+if not st.session_state.nome_usuario:
+    with st.chat_message("assistant", avatar=URL_AVATAR_RIKE):
+        st.markdown("Olá! Eu sou o **Rike**. Antes de começarmos, como você gostaria de ser chamado?")
+    
+    if nome := st.chat_input("Digite seu nome aqui..."):
+        st.session_state.nome_usuario = nome
+        st.rerun()
+    st.stop() # Pausa o app até ter o nome
+
+# 2. INSTRUÇÃO DE SISTEMA ATUALIZADA (Com base no pedido do Rike na foto)
+instrucao_sistema = f"""
+Seu nome é Rike. Você é um assistente de elite conversando com {st.session_state.nome_usuario}.
+Melhorias implementadas: 
+- Compreensão profunda de nuances do idioma e gírias.
+- Base de conhecimento expandida (Llama 3.3 70B).
+- Capacidade de diálogo empático e personalizado.
+Seja técnico, mas mantenha um tom de parceria.
+"""
+
+# Exibe Histórico com Avatares
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
+    avatar = URL_AVATAR_RIKE if message["role"] == "assistant" else URL_AVATAR_USUARIO
+    with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-# Campo de entrada de texto
-if prompt := st.chat_input("Fale com o Rike..."):
-    # Guarda a pergunta do Richard
+# 3. ENTRADA DE CHAT
+if prompt := st.chat_input(f"Fale com o Rike, {st.session_state.nome_usuario}..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=URL_AVATAR_USUARIO):https://imgur.com/a/hXdBDw3
         st.markdown(prompt)
 
-    # Resposta da IA
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=URL_AVATAR_RIKE):https://imgur.com/a/5hDVWst
         try:
-            # Chamada para o modelo mais recente (Llama 3.3)
             chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": instrucao_sistema},
-                    *st.session_state.messages
-                ],
-                model="llama-3.3-70b-versatile", # Modelo atualizado e estável
-                temperature=0.7,
-                max_tokens=2048
+                messages=[{"role": "system", "content": instrucao_sistema}] + st.session_state.messages,
+                model="llama-3.3-70b-versatile",
+                temperature=0.8, # Mais naturalidade na fala
             )
-            
-            full_response = chat_completion.choices[0].message.content
-            st.markdown(full_response)
-            
-            # Guarda a resposta no histórico
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
+            response = chat_completion.choices[0].message.content
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
-            # Tratamento de erro para limites ou modelos
-            if "decommissioned" in str(e):
-                st.error("Rike: Richard, o modelo foi atualizado. Preciso de um ajuste rápido no código!")
-            elif "429" in str(e):
-                st.error("Rike: Calma, Richard! Estou processando muita coisa. Aguarde 10 segundos.")
-            else:
-                st.error(f"Erro técnico: {e}")
-                
+            st.error(f"Erro: {e}")
+            
