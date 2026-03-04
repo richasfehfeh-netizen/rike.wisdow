@@ -1,3 +1,4 @@
 groq
 streamlit
-
+gspread
+google-auth
