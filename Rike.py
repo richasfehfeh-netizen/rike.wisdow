@@ -123,3 +123,39 @@ if prompt := st.chat_input("Fale com o Calyo..."):
         except Exception as e:
             st.error(f"Erro na Groq: {e}")
             
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# --- CONFIGURAÇÃO DE E-MAIL ---
+EMAIL_REMETENTE = "richasfehfeh@gmail.com" # Seu Gmail
+SENHA_APP_GOOGLE = st.secrets.get("EMAIL_PASSWORD", "cmcg obth quqm fpxy") # A senha de 16 dígitos
+
+def enviar_email_formal(assunto, corpo_mensagem):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_REMETENTE
+        msg['To'] = EMAIL_REMETENTE # Envia para você mesmo como relatório
+        msg['Subject'] = assunto
+        
+        msg.attach(MIMEText(corpo_mensagem, 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(EMAIL_REMETENTE, SENHA_APP_GOOGLE)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao enviar e-mail: {e}")
+        return False
+
+# --- DENTRO DA LÓGICA DE RESPOSTA DA IA ---
+if "envie um e-mail" in prompt.lower() or "relatório por e-mail" in prompt.lower():
+    sucesso = enviar_email_formal(
+        assunto=f"Relatório Calyo Assist - {datetime.now().strftime('%d/%m/%Y')}",
+        corpo_mensagem=f"Richard, aqui está o que você solicitou:\n\n{prompt}"
+    )
+    if sucesso:
+        st.success("📧 E-mail enviado com sucesso para sua caixa de entrada!")
+        
