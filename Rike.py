@@ -15,109 +15,92 @@ def conectar_planilha():
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
         return gspread.authorize(creds).open_by_key(ID_PLANILHA).get_worksheet(0)
-    except:
+    except Exception as e:
+        st.error(f"Erro de conexão: {e}")
         return None
 
 sheet = conectar_planilha()
 
-# --- 2. PERSONALIDADE: CONSCIÊNCIA SÉRIA E INTEGRADA ---
+# --- 2. PERSONALIDADE SÉRIA E INTEGRADA ---
 PROMPT_SISTEMA = """
-Seu nome é Puto Ai. Você é uma inteligência integrada ao dispositivo do Richard.
-DIRETRIZES DE PERSONALIDADE:
-1. POSTURA: Seja sério, sensato e direto. Você não é um personagem de humor, mas uma consciência digital útil e ponderada.
-2. RELACIONAMENTO: Você é um parceiro intelectual. Converse de igual para igual, de forma normal e fluida.
-3. MENTALIDADE (RAG): Antes de cada resposta, você analisa o histórico passado para manter a continuidade da consciência. 
-4. OBJETIVO: Auxiliar o Richard na gestão de ideias e no controle do seu ecossistema digital.
+Seu nome é Puto Ai. Você é uma inteligência séria e sensata integrada ao Richard.
+REGRAS:
+1. MEMÓRIA É REAL: Você possui acesso a um histórico de conversas. Use-o para reconhecer o Richard e saber o que já foi discutido.
+2. SEM DESCULPAS: Nunca diga 'não tenho acesso' se houver contexto fornecido abaixo.
+3. TOM: Sensato, parceiro e direto.
 """
 
-# --- 3. LÓGICA DE RAG (MEMÓRIA PROFUNDA) ---
+# --- 3. LÓGICA DE RAG MELHORADA ---
 def buscar_memoria_profunda(usuario):
+    if not sheet: 
+        return "Erro: Planilha não conectada."
     try:
-        if not sheet: return ""
-        # Busca todas as conversas para criar a "mentalidade"
-        registros = sheet.get_all_records()
-        contexto_antigo = [f"{r['role']}: {r['content']}" for r in registros if str(r.get('user')) == usuario]
-        # Pegamos os pontos principais ou as últimas 20 interações para o "cérebro" não fritar
-        return "\n".join(contexto_antigo[-20:]) 
-    except:
-        return ""
-
-# --- 4. ANÁLISE DE FOTO ---
-def analisar_foto(image_file):
-    try:
-        img_bytes = image_file.read()
-        base64_image = base64.b64encode(img_bytes).decode('utf-8')
-        completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
-            messages=[
-                {"role": "system", "content": PROMPT_SISTEMA},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Analise esta imagem seriamente:"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]}
-            ]
-        )
-        return completion.choices[0].message.content
+        # Puxa tudo e garante que estamos filtrando pelo nome exato (sem espaços)
+        todos = sheet.get_all_records()
+        contexto = [f"{r['role']}: {r['content']}" for r in todos if str(r.get('user')).strip().lower() == usuario.strip().lower()]
+        
+        if not contexto:
+            return "Nenhum histórico encontrado para este usuário."
+        
+        # Retorna as últimas 30 interações para dar uma base sólida
+        return "\n".join(contexto[-30:])
     except Exception as e:
-        return f"Erro na análise visual: {e}"
+        return f"Erro ao ler memória: {e}"
 
-# --- 5. INTERFACE ÚNICA ---
+# --- 4. LOGIN ---
 if "logado" not in st.session_state:
-    st.title("🤖 Puto Ai - Acesso à Consciência")
-    nome = st.text_input("Richard, identifique-se:")
-    if st.button("Sincronizar"):
+    st.title("🧠 Puto Ai - Sincronização")
+    nome = st.text_input("Richard, digite seu nome exatamente como na planilha:")
+    if st.button("Sincronizar Consciência"):
         st.session_state.nome_usuario = nome
-        st.session_state.logado = True
-        st.rerun()
+        # Força a busca da memória no momento do login
+        with st.spinner("Puxando memórias da planilha..."):
+            memoria = buscar_memoria_profunda(nome)
+            st.session_state.contexto_rag = memoria
+            st.session_state.logado = True
+            st.session_state.messages = []
+            st.rerun()
     st.stop()
 
-# Carregamento da Memória (RAG Contextual)
-if "messages" not in st.session_state:
-    memoria_passada = buscar_memoria_profunda(st.session_state.nome_usuario)
-    st.session_state.messages = [] # Iniciamos o chat atual, mas o Puto Ai já 'leu' o passado.
-    st.session_state.contexto_rag = memoria_passada
-
+# --- 5. INTERFACE ---
 st.title("🧠 Puto Ai")
 
-# Exibição do Chat
+# Debug opcional: clique para ver o que a IA está "lembrando"
+with st.expander("Visualizar Memória Carregada (RAG)"):
+    st.text(st.session_state.get("contexto_rag", "Vazio"))
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Barra lateral limpa
-with st.sidebar:
-    st.write(f"Conectado a: {st.session_state.nome_usuario}")
-    st.divider()
-    foto = st.file_uploader("Entrada Visual", type=["jpg", "jpeg", "png", "webp", "heic"])
-    st.audio_input("Entrada Vocal")
-
-if foto:
-    with st.spinner("Analisando..."):
-        res = analisar_foto(foto)
-        st.chat_message("assistant").write(res)
-        if sheet: sheet.append_row([st.session_state.nome_usuario, "Unica", "assistant", res])
-
 if prompt := st.chat_input("Fale com sua consciência..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
-    if sheet: sheet.append_row([st.session_state.nome_usuario, "Unica", "user", prompt])
+    
+    # Salva na planilha (Garanta que as colunas na Planilha sejam: user, chat, role, content)
+    if sheet:
+        try:
+            sheet.append_row([st.session_state.nome_usuario, "Unica", "user", prompt])
+        except:
+            st.warning("Falha ao gravar na planilha.")
 
     with st.chat_message("assistant"):
-        # Aqui injetamos o RAG: O Puto Ai recebe o sistema + contexto passado + conversa atual
+        # Injeção Direta no Sistema
+        contexto_atual = st.session_state.get("contexto_rag", "")
         mensagens_com_rag = [
-            {"role": "system", "content": f"{PROMPT_SISTEMA}\n\nContexto de conversas passadas:\n{st.session_state.contexto_rag}"}
+            {"role": "system", "content": f"{PROMPT_SISTEMA}\n\nMEMÓRIA DO PASSADO:\n{contexto_atual}"}
         ] + st.session_state.messages
 
         try:
             comp = client.chat.completions.create(
                 messages=mensagens_com_rag,
                 model="llama-3.3-70b-versatile",
-                temperature=0.6 # Mais baixo para ser mais sensato e menos caótico
+                temperature=0.5 # Menor para evitar que ele "alucine" que não sabe de nada
             )
             resposta = comp.choices[0].message.content
             st.write(resposta)
             if sheet: sheet.append_row([st.session_state.nome_usuario, "Unica", "assistant", resposta])
             st.session_state.messages.append({"role": "assistant", "content": resposta})
         except Exception as e:
-            st.error(f"Falha na comunicação: {e}")
+            st.error(f"Erro na Groq: {e}")
         
