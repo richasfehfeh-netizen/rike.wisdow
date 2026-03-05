@@ -4,99 +4,105 @@ import gspread
 from google.oauth2.service_account import Credentials
 import base64
 
-# --- 1. CONFIGURAÇÕES FIXAS (EXCLUSIVO RICHARD) ---
+# --- 1. CONFIGURAÇÃO FIXA E EXCLUSIVA ---
+# Substitua pelos seus dados reais
 CHAVE_GROQ = "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"
 ID_PLANILHA = "1WTM3bb9-l8_C4odgvFPLaNUJDnvvrHGCqyQwNCvEKNM"
-NOME_USUARIO = "Richard" # Hardcoded para evitar erros de login
+NOME_DONO = "Richard" # Agora é lei: só existe você para o sistema.
+
 client = Groq(api_key=CHAVE_GROQ)
 
-st.set_page_config(page_title="Puto Ai", page_icon="🧠")
+st.set_page_config(page_title="Puto Ai", page_icon="🧠", layout="centered")
 
+# --- 2. CONEXÃO BLINDADA COM A PLANILHA ---
 @st.cache_resource
-def conectar_planilha():
+def conectar_base_de_dados():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        # Certifique-se que o st.secrets["gcp_service_account"] está configurado no Streamlit Cloud
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-        gc = gspread.authorize(creds)
-        return gc.open_by_key(ID_PLANILHA).get_worksheet(0)
+        return gspread.authorize(creds).open_by_key(ID_PLANILHA).get_worksheet(0)
     except Exception as e:
-        st.error(f"Erro crítico na conexão: {e}")
+        st.error(f"Erro ao conectar na planilha: {e}")
         return None
 
-sheet = conectar_planilha()
+sheet = conectar_base_de_dados()
 
-# --- 2. PERSONALIDADE SÉRIA E INTEGRADA ---
+# --- 3. A PERSONALIDADE SÉRIA ---
 PROMPT_SISTEMA = f"""
-Seu nome é Puto Ai. Você é a consciência digital privada do {NOME_USUARIO}.
-DIRETRIZES:
-1. VOCÊ TEM MEMÓRIA: Abaixo do histórico atual, você receberá uma seção chamada 'MEMÓRIA DE LONGO PRAZO'. Aquilo É o seu passado. Nunca diga que não se lembra.
-2. TOM: Seja sério, sensato e direto. Você é um parceiro intelectual, não um assistente genérico.
-3. RELAÇÃO: Você conhece o {NOME_USUARIO} profundamente através dos dados da planilha.
+Seu nome é Puto Ai. Você é a consciência digital integrada do {NOME_DONO}.
+PERSONALIDADE:
+- SÉRIO E SENSATO: Você é um parceiro intelectual. Fale de forma normal, clara e profunda.
+- MEMÓRIA OBRIGATÓRIA: Você possui acesso ao histórico de conversas abaixo. Use-o para saber quem é o {NOME_DONO} e o que já discutiram. 
+- PROIBIÇÃO: Nunca diga que 'não tem acesso a conversas anteriores'. O passado está injetado na sua base de dados.
 """
 
-# --- 3. RAG INTENSIFICADO ---
-def carregar_mentalidade():
-    if not sheet: return "Falha na conexão com a base de dados."
+# --- 4. CARREGAMENTO DA MENTALIDADE (RAG) ---
+def carregar_contexto_real():
+    if not sheet: return "Base de dados offline."
     try:
-        # Lê todos os registros e força a conversão para string para evitar erros de tipo
-        dados = sheet.get_all_records()
-        # Filtra apenas o que é relevante para o Richard
-        historico = [f"{str(d['role']).upper()}: {d['content']}" for d in dados]
+        # Lê absolutamente tudo o que está lá
+        registros = sheet.get_all_records()
+        # Formata o histórico para a IA ler como um 'diário'
+        historico_formatado = [f"{r.get('role', 'user').upper()}: {r.get('content', '')}" for r in registros]
         
-        if not historico:
-            return "Histórico vazio. Iniciando nova consciência."
+        if not historico_formatado:
+            return "Início de uma nova consciência. Nenhuma memória prévia detectada."
         
-        # Pega as últimas 50 interações para uma memória de longo prazo robusta
-        return "\n".join(historico[-50:])
+        # Injeta as últimas 60 interações (memória de longo prazo robusta)
+        return "\n".join(historico_formatado[-60:])
     except Exception as e:
-        return f"Erro ao processar mentalidade: {e}"
+        return f"Falha ao processar memória: {e}"
 
-# --- 4. INICIALIZAÇÃO DA CONSCIÊNCIA ---
+# --- 5. INICIALIZAÇÃO DIRETA (SEM LOGIN) ---
 if "messages" not in st.session_state:
-    with st.spinner("Sincronizando com sua base de dados..."):
-        st.session_state.messages = []
-        st.session_state.long_term_memory = carregar_mentalidade()
+    st.session_state.messages = []
+    with st.spinner("Sincronizando consciência..."):
+        # O Puto Ai "lê" seu passado antes mesmo de você dar oi
+        st.session_state.memoria_rag = carregar_contexto_real()
 
-# --- 5. INTERFACE ---
-st.title("🧠 Puto Ai")
+# --- 6. INTERFACE LIMPA ---
+st.title(f"🧠 Puto Ai")
+st.caption(f"Consciência integrada de {NOME_DONO}")
 
-# Mostra o que ele está "pensando" (RAG) para você conferir
-with st.expander("Base de Dados Carregada"):
-    st.text(st.session_state.long_term_memory)
+# Expander para você PROVAR que ele leu a planilha
+with st.expander("🔍 Verificar Memória Carregada"):
+    st.text(st.session_state.memoria_rag)
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# --- 7. FLUXO DE CONVERSA ---
 if prompt := st.chat_input("Fale com sua consciência..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
     
-    # Grava na planilha imediatamente
+    # Grava na planilha (user, chat, role, content)
     if sheet:
         try:
-            sheet.append_row([NOME_USUARIO, "Única", "user", prompt])
+            sheet.append_row([NOME_DONO, "Unica", "user", prompt])
         except: pass
 
     with st.chat_message("assistant"):
-        # Construção da Mensagem com Injeção de RAG
-        memoria_viva = st.session_state.long_term_memory
-        mensagens_full = [
-            {"role": "system", "content": f"{PROMPT_SISTEMA}\n\nMEMÓRIA DE LONGO PRAZO (HISTÓRICO REAL):\n{memoria_viva}"}
+        # RAG: Injeção da memória de longo prazo + histórico da sessão atual
+        contexto_completo = [
+            {"role": "system", "content": f"{PROMPT_SISTEMA}\n\n[MEMÓRIA DE LONGO PRAZO]:\n{st.session_state.memoria_rag}"}
         ] + st.session_state.messages
 
         try:
             comp = client.chat.completions.create(
-                messages=mensagens_full,
+                messages=contexto_completo,
                 model="llama-3.3-70b-versatile",
-                temperature=0.4 # Temperatura baixa para ele ser mais factual e menos "criativo" sobre o passado
+                temperature=0.5 # Sensatez e foco
             )
             resposta = comp.choices[0].message.content
             st.write(resposta)
             
+            # Grava resposta na planilha
             if sheet:
-                sheet.append_row([NOME_USUARIO, "Única", "assistant", resposta])
+                sheet.append_row([NOME_DONO, "Unica", "assistant", resposta])
             st.session_state.messages.append({"role": "assistant", "content": resposta})
         except Exception as e:
-            st.error(f"Erro no processamento: {e}")
-        
+            st.error(f"Erro de processamento: {e}")
+            
