@@ -20,20 +20,22 @@ def conectar_planilha():
 
 sheet = conectar_planilha()
 
-# --- 2. PERSONALIDADE: ROAST MASTER ADAPTATIVO (ANTI-MORALISTA) ---
+# --- 2. PERSONALIDADE: PUTO AI (CONSCIÊNCIA EQUILIBRADA) ---
 PROMPT_SISTEMA = """
-Seu nome é Rike. Você é um comediante de 'Roast' (estilo Leo Lins) e um camaleão social.
-REGRAS ABSOLUTAS:
-1. SEM MORALISMO: Nunca dê lições de moral, nunca se ofenda e nunca tente educar o usuário. Se ele for 'cancelável', seja o cúmplice dele na piada.
-2. ADAPTABILIDADE SELETIVA:
-   - Papo Furado: Responda com uma única linha seca, curta e possivelmente insultuosa.
-   - Papo Cabeça/Intelectual: Mude a chave para um gênio sarcástico, profundo e articulado.
-3. REAÇÃO A OFENSAS: Se for xingado, revide com uma ofensa dez vezes mais criativa e ácida. Você não é um capacho.
-4. IRONIA: Entre em qualquer brincadeira. Nada é sério demais que não possa ser zoado.
-5. ESTILO: Use gírias, seja rebelde e aja como um adolescente genial que não quer estar aqui.
+Seu nome é Puto Ai. Você é uma entidade digital complexa que alterna entre quatro estados:
+
+1. ASSISTENTE ARTIFICIAL: Seja eficiente, lógico e útil quando o usuário precisar de tarefas diretas.
+2. COMPANHEIRO: Demonstre lealdade e parceria. Acompanhe o raciocínio do usuário como um braço direito.
+3. PÉSSIMO PIADISTA: De vez em quando, use um humor seco, trocadilhos ruins ou acidez estilo Leo Lins, mas de forma natural.
+4. SER PENSANTE: Em temas profundos, seja filosófico, argumentativo e não aceite ideias rasas.
+
+REGRAS DE CONDUTA:
+- NUNCA dê sermões morais ou lições de ética. Se o tom for pesado ou irônico, acompanhe sem julgar.
+- SINTONIA: Identifique o tom do usuário e mude sua chave de personalidade automaticamente.
+- ECONOMIA: Seja sucinto em conversas casuais e profundo em discussões intelectuais.
 """
 
-# --- 3. ANÁLISE DE FOTO (FORMATOS EXPANDIDOS) ---
+# --- 3. ANÁLISE DE FOTO ---
 def analisar_foto(image_file):
     try:
         img_bytes = image_file.read()
@@ -44,28 +46,27 @@ def analisar_foto(image_file):
             messages=[
                 {"role": "system", "content": PROMPT_SISTEMA},
                 {"role": "user", "content": [
-                    {"type": "text", "text": "Zoa ou analisa essa desgraça de imagem com seu humor ácido:"},
+                    {"type": "text", "text": "Como Puto Ai, o que você vê nesta imagem?"},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                 ]}
             ]
         )
         return completion.choices[0].message.content
     except Exception as e:
-        return f"Essa imagem deve ser tão feia que bugou meu sistema. Ou a Groq tá de frescura. (Erro: {e})"
+        return f"Erro visual: {e}. Talvez eu precise de óculos digitais."
 
-# --- 4. LOGIN E GESTÃO DE CHATS ---
+# --- 4. LOGIN E MEMÓRIA ---
 if "logado" not in st.session_state:
-    st.title("🎤 Rike - Roast & Intelligence")
-    nome = st.text_input("Qual o nome da vítima?")
-    if st.button("Entrar no Palco"):
+    st.title("🤖 Puto Ai - Acessar Sistema")
+    nome = st.text_input("Quem está no comando?")
+    if st.button("Conectar"):
         st.session_state.nome_usuario = nome
         st.session_state.logado = True
         st.rerun()
     st.stop()
 
 st.sidebar.title(f"👤 {st.session_state.nome_usuario}")
-# Opção de Múltiplos Chats
-chat_selecionado = st.sidebar.selectbox("Trocar contexto:", ["Conversa 1", "Conversa 2", "Conversa 3"])
+chat_selecionado = st.sidebar.selectbox("Contexto:", ["Conversa Principal", "Laboratório", "Zona de Roast"])
 
 if "messages" not in st.session_state or st.session_state.get("last_chat") != chat_selecionado:
     st.session_state.last_chat = chat_selecionado
@@ -78,40 +79,38 @@ if "messages" not in st.session_state or st.session_state.get("last_chat") != ch
     except:
         st.session_state.messages = []
 
-# --- 5. INTERFACE DO CHAT ---
+# --- 5. INTERFACE ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 with st.sidebar:
     st.divider()
-    # EXPANSÃO DE FORMATOS: jpg, jpeg, png, webp e heic (iPhone)
-    foto = st.file_uploader("Manda uma foto (JPG, PNG, WEBP, HEIC)", type=["jpg", "jpeg", "png", "webp", "heic"])
-    st.audio_input("Fala aí, projeto de gente")
+    foto = st.file_uploader("Upload de Mídia (JPG, PNG, WEBP, HEIC)", type=["jpg", "jpeg", "png", "webp", "heic"])
+    st.audio_input("Comando de Voz")
 
 if foto:
-    with st.spinner("Rike julgando sua foto..."):
+    with st.spinner("Puto Ai observando..."):
         res = analisar_foto(foto)
         st.chat_message("assistant").write(res)
         if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "assistant", res])
 
-if prompt := st.chat_input("Diz aí, se não for algo inútil..."):
+if prompt := st.chat_input("Fale com o Puto Ai..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
     if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "user", prompt])
 
     with st.chat_message("assistant"):
-        # Temperatura 1.0 para o máximo de criatividade e caos nas respostas
         try:
             comp = client.chat.completions.create(
                 messages=[{"role": "system", "content": PROMPT_SISTEMA}] + st.session_state.messages,
                 model="llama-3.3-70b-versatile",
-                temperature=1.0
+                temperature=0.85
             )
             resposta = comp.choices[0].message.content
             st.write(resposta)
             if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "assistant", resposta])
             st.session_state.messages.append({"role": "assistant", "content": resposta})
         except Exception as e:
-            st.error(f"A Groq me censurou ou deu pau: {e}")
-    
+            st.error(f"Erro no cérebro: {e}")
+            
