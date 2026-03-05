@@ -1,182 +1,107 @@
 import streamlit as st
-from groq import Groq
-import gspread
-from google.oauth2.service_account import Credentials
+import smtplib
 import requests
-from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime, timedelta
 import re
+import gspread
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from groq import Groq
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from google.oauth2.service_account import Credentials
 
-# --- CONFIGURAÇÕES TÉCNICAS ---
-# Substitua pelos seus dados reais ou use st.secrets
-CHAVE_GROQ = st.secrets.get("GROQ_API_KEY", "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")
+# --- 1. CONFIGURAÇÕES DE SEGURANÇA (SECRETS) ---
+CHAVE_GROQ = st.secrets.get("GROQ_API_KEY")
+EMAIL_USER = st.secrets.get("EMAIL_USER")
+EMAIL_PASS = st.secrets.get("EMAIL_PASS")
 ID_PLANILHA = "1WTM3bb9-l8_C4odgvFPLaNUJDnvvrHGCqyQwNCvEKNM" 
-TOPICO_NTFY = "calyo_push_notificator" # Tópico do print 8495
+TOPICO_NTFY = "calyo_push_notificator"
 
 client = Groq(api_key=CHAVE_GROQ)
 
-st.set_page_config(page_title="Calyo Assist", page_icon="🧠")
+st.set_page_config(page_title="Calyo Assist", page_icon="🧠", layout="centered")
 
-# --- MOTOR DE AGENDAMENTO (RESOLVE O ERRO DO PRINT 8498) ---
+# --- 2. MOTORES INTERNOS (AGENDADOR E PLANILHA) ---
 @st.cache_resource
-def iniciar_agendador():
-    scheduler = BackgroundScheduler()
-    if not scheduler.running:
-        scheduler.start()
-    return scheduler
-
-scheduler = iniciar_agendador()
-
-def enviar_push_real(titulo, mensagem):
-    """Envia a notificação para o celular via ntfy.sh"""
-    try:
-        requests.post(
-            f"https://ntfy.sh/{TOPICO_NTFY}",
-            data=mensagem.encode('utf-8'),
-            headers={
-                "Title": titulo,
-                "Priority": "high",
-                "Tags": "brain,bell"
-            }
-        )
-    except Exception as e:
-        print(f"Erro ao enviar push: {e}")
-
-# --- CONEXÃO COM A PLANILHA (RESOLVE O ERRO DO PRINT 8494) ---
-@st.cache_resource
-def conectar_planilha():
+def iniciar_motores():
+    # Agendador
+    sch = BackgroundScheduler()
+    if not sch.running: sch.start()
+    
+    # Planilha (RAG)
+    sheet_obj = None
     try:
         if "gcp_service_account" in st.secrets:
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"],
-                scopes=[
-                    "https://www.googleapis.com/auth/spreadsheets",
-                    "https://www.googleapis.com/auth/drive"
-                ]
+                scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             )
-            return gspread.authorize(creds).open_by_key(ID_PLANILHA).get_worksheet(0)
-    except Exception as e:
-        st.error(f"Erro de conexão: {e}")
-    return None
+            sheet_obj = gspread.authorize(creds).open_by_key(ID_PLANILHA).get_worksheet(0)
+    except: pass
+    return sch, sheet_obj
 
-sheet = conectar_planilha()
+scheduler, sheet = iniciar_motores()
 
-# --- INTERFACE ---
+# --- 3. FUNÇÕES DE COMUNICAÇÃO EXTERNA ---
+def enviar_push(mensagem):
+    requests.post(f"https://ntfy.sh/{TOPICO_NTFY}", data=mensagem.encode('utf-8'))
+
+def enviar_email(assunto, mensagem):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = EMAIL_USER
+        msg['Subject'] = assunto
+        msg.attach(MIMEText(mensagem, 'plain'))
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except: return False
+
+# --- 4. INTERFACE ---
 st.title("🧠 Calyo Assist")
-st.caption("Consciência integrada de Richard")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibe histórico
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Entrada do Usuário
+# --- 5. LÓGICA DE PROCESSAMENTO ---
 if prompt := st.chat_input("Fale com o Calyo..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # LÓGICA DE AGENDAMENTO AUTOMÁTICO
-    comando_agendar = any(palavra in prompt.lower() for palavra in ["agende", "notifique", "lembre", "avise"])
-    
-    if comando_agendar:
-        numeros = re.findall(r'\d+', prompt)
-        minutos = int(numeros[0]) if numeros else 5 # Padrão 5 min se não disser
-        
-        hora_disparo = datetime.now() + timedelta(minutes=minutos)
-        
-        # Agenda a tarefa real no servidor
-        scheduler.add_job(
-            enviar_push_real, 
-            'date', 
-            run_date=hora_disparo, 
-            args=["Lembrete do Calyo Assist", f"Richard, você pediu: {prompt}"]
-        )
-        st.success(f"✅ Entendido! Notificação agendada para às {hora_disparo.strftime('%H:%M')}.")
+    # Ação: Agendamento
+    if any(x in prompt.lower() for x in ["agende", "avise", "lembre"]):
+        minutos = re.findall(r'\d+', prompt)
+        tempo = int(minutos[0]) if minutos else 5
+        hora_alerta = datetime.now() + timedelta(minutes=tempo)
+        scheduler.add_job(enviar_push, 'date', run_date=hora_alerta, args=[f"Lembrete: {prompt}"])
+        st.success(f"✅ Agendado para às {hora_alerta.strftime('%H:%M')}")
 
-    # RESPOSTA DA IA
+    # Ação: E-mail
+    if "email" in prompt.lower() or "e-mail" in prompt.lower():
+        if enviar_email("Relatório Calyo Assist", prompt):
+            st.success("📧 E-mail enviado!")
+
+    # Resposta da IA
     with st.chat_message("assistant"):
+        instrucao = f"Seu nome é Calyo Assist. Você é o assistente do Richard. Você PODE enviar e-mails e push via ntfy ({TOPICO_NTFY})."
         try:
-            # Instrução de Sistema para evitar a "amnésia" do print 8499
-            instrucao_sistema = (
-                "Seu nome é Calyo Assist. Você é o assistente pessoal do Richard. "
-                "VOCÊ TEM capacidade de agendar notificações reais usando o ntfy.sh. "
-                "Se o usuário pedir um lembrete, confirme que o agendador interno foi acionado."
-            )
-            
-            response = client.chat.completions.create(
+            resp = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "system", "content": instrucao_sistema}] + st.session_state.messages
+                messages=[{"role": "system", "content": instrucao}] + st.session_state.messages
             )
-            
-            resposta_texto = response.choices[0].message.content
-            st.markdown(resposta_texto)
-            st.session_state.messages.append({"role": "assistant", "content": resposta_texto})
-            
-            # Salva na planilha se disponível (Print 8494)
-            if sheet:
-                sheet.append_row([datetime.now().isoformat(), "Richard", prompt, resposta_texto])
-                
+            texto = resp.choices[0].message.content
+            st.markdown(texto)
+            st.session_state.messages.append({"role": "assistant", "content": texto})
+            if sheet: sheet.append_row([datetime.now().isoformat(), "Richard", prompt, texto])
         except Exception as e:
-            st.error(f"Erro na Groq: {e}")
-            
-import streamlit as st
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from datetime import datetime
-
-# --- 1. CONFIGURAÇÃO DE SEGURANÇA (SECRETS) ---
-# No Streamlit Cloud, adicione estas chaves em Settings > Secrets:
-# EMAIL_USER = "seu_email@gmail.com"
-# EMAIL_PASS = "sua_senha_de_16_digitos"
-
-EMAIL_REMETENTE = st.secrets.get("EMAIL_USER")
-SENHA_APP_GOOGLE = st.secrets.get("EMAIL_PASS")
-
-# --- 2. FUNÇÃO DE ENVIO DE E-MAIL ---
-def enviar_email_formal(assunto, corpo_mensagem):
-    if not EMAIL_REMETENTE or not SENHA_APP_GOOGLE:
-        st.error("Erro: Credenciais de e-mail não configuradas nos Secrets!")
-        return False
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_REMETENTE
-        msg['To'] = EMAIL_REMETENTE # Envia para você mesmo
-        msg['Subject'] = assunto
-        msg.attach(MIMEText(corpo_mensagem, 'plain'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(EMAIL_REMETENTE, SENHA_APP_GOOGLE)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        st.error(f"Falha técnica no SMTP: {e}")
-        return False
-
-# --- 3. INTERFACE E COMANDOS ---
-st.title("🧠 Calyo Assist")
-
-# O prompt só é processado aqui dentro para evitar o erro do print 8501
-if prompt := st.chat_input("Comando para Calyo..."):
-    
-    # Lógica de E-mail
-    if "envie um e-mail" in prompt.lower() or "enviar e-mail" in prompt.lower():
-        with st.spinner("Preparando e-mail..."):
-            sucesso = enviar_email_formal(
-                assunto=f"Calyo Assist: Relatório {datetime.now().strftime('%H:%M')}",
-                corpo_mensagem=f"Richard, aqui está o conteúdo solicitado:\n\n{prompt}"
-            )
-            if sucesso:
-                st.success("📧 E-mail enviado com sucesso!")
-            else:
-                st.error("❌ Não foi possível enviar o e-mail.")
-
-    # (Aqui você mantém o restante do código de conversa e agendamento que já funciona)
-    with st.chat_message("user"):
-        st.markdown(prompt)
+            st.error(f"Erro: {e}")
+        
