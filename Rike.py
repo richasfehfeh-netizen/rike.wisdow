@@ -11,7 +11,7 @@ import re
 # Substitua pelos seus dados reais ou use st.secrets
 CHAVE_GROQ = st.secrets.get("GROQ_API_KEY", "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")
 ID_PLANILHA = "1WTM3bb9-l8_C4odgvFPLaNUJDnvvrHGCqyQwNCvEKNM" 
-TOPICO_NTFY = "ntfy.sh/calyo_push_notificator" # Tópico do print 8495
+TOPICO_NTFY = "calyo_push_notificator" # Tópico do print 8495
 
 client = Groq(api_key=CHAVE_GROQ)
 
