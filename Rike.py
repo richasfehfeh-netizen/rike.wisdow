@@ -2,94 +2,108 @@ import streamlit as st
 from groq import Groq
 import gspread
 from google.oauth2.service_account import Credentials
+import base64
 
-# --- 1. CONFIGURAÇÕES INICIAIS ---
-CHAVE_GROQ = "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" # Insira sua chave Groq
-ID_PLANILHA = "1WTM3bb9-l8_C4odgvFPLaNUJDnvvrHGCqyQwNCvEKNM" # Aquele código longo da URL
+# --- 1. CONFIGURAÇÕES TÉCNICAS ---
+CHAVE_GROQ = "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"
+ID_PLANILHA = "1WTM3bb9-l8_C4odgvFPLaNUJDnvvrHGCqyQwNCvEKNM"
+client = Groq(api_key=CHAVE_GROQ)
 
-client_groq = Groq(api_key=CHAVE_GROQ)
-
-# --- 2. CONEXÃO COM A NUVEM (GOOGLE SHEETS) ---
 @st.cache_resource
 def conectar_planilha():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        # Usa os segredos configurados no Streamlit Cloud
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
         gc = gspread.authorize(creds)
-        # Tenta abrir pelo ID para evitar erro 404
         return gc.open_by_key(ID_PLANILHA).get_worksheet(0)
     except Exception as e:
-        st.error(f"Erro de Conexão: {e}")
+        st.error(f"Erro na conexão com a nuvem: {e}")
         return None
 
 sheet = conectar_planilha()
 
-# Se não conectar, para o código aqui
-if sheet is None:
-    st.info("💡 Dica: Verifique se o ID da planilha está correto e se você compartilhou ela com o e-mail do JSON!")
-    st.stop()
+# --- 2. PERSONALIDADE ADAPTATIVA (CAMALEÃO/LEO LINS) ---
+PROMPT_SISTEMA = """
+Seu nome é Rike. Você é um assistente com inteligência social e adaptabilidade extrema.
+DIRETRIZES:
+1. ESPELHAMENTO: Avalie o tom do usuário. Se ele for educado, seja um parceiro prestativo. Se for irônico ou usar gírias, responda com sarcasmo e humor estilo Leo Lins.
+2. REAÇÃO A OFENSAS: Se for xingado, não peça desculpas. Revide com uma piada ácida ou deboche inteligente. Você não é um capacho.
+3. HUMOR ADOLESCENTE: Você pode ser rebelde e usar palavras informais se a conversa permitir. Entre em brincadeiras e ironias prontamente.
+4. VISÃO: Ao analisar fotos, procure detalhes para comentar de forma perspicaz ou engraçada.
+"""
 
-# --- 3. LÓGICA DE LOGIN ---
+# --- 3. FUNÇÕES DE SUPORTE ---
+def analisar_foto(image_file):
+    base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+    completion = client.chat.completions.create(
+        model="llama-3.2-11b-vision-preview",
+        messages=[
+            {"role": "system", "content": PROMPT_SISTEMA},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Dê sua opinião sincera e ácida sobre essa imagem:"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+            ]}
+        ]
+    )
+    return completion.choices[0].message.content
+
+# --- 4. INTERFACE DE LOGIN E NAVEGAÇÃO ---
 if "logado" not in st.session_state:
-    st.title("🔐 Rike - Acesso à Memória")
-    nome_input = st.text_input("Quem está falando?")
-    if st.button("Acessar"):
-        if nome_input:
-            st.session_state.nome_usuario = nome_input
-            try:
-                # Busca conversas antigas deste usuário
-                todos_registros = sheet.get_all_records()
-                st.session_state.messages = [
-                    {"role": r["role"], "content": r["content"]} 
-                    for r in todos_registros if str(r.get("user", "")) == nome_input
-                ]
-            except:
-                st.session_state.messages = []
-            
-            st.session_state.logado = True
-            st.rerun()
+    st.title("🤖 Rike - Consciência Adaptativa")
+    nome = st.text_input("Quem está acessando o sistema?")
+    if st.button("Entrar"):
+        st.session_state.nome_usuario = nome
+        st.session_state.logado = True
+        st.rerun()
     st.stop()
 
-# --- 4. INTERFACE DO CHAT ---
-st.title(f"🧠 Rike - Consciência de {st.session_state.nome_usuario}")
+# Barra Lateral: Múltiplos Chats e Ferramentas
+st.sidebar.title(f"Usuário: {st.session_state.nome_usuario}")
+opcoes_chat = ["Conversa Principal", "Conversa Secundária", "Arquivo X"]
+chat_selecionado = st.sidebar.selectbox("Trocar chat:", opcoes_chat)
 
-# Exibe o histórico
+# Carregamento do histórico filtrado (Usuário + Chat Específico)
+if sheet:
+    todos = sheet.get_all_records()
+    historico = [r for r in todos if r['user'] == st.session_state.nome_usuario and str(r.get('chat', '')) == chat_selecionado]
+    st.session_state.messages = [{"role": r['role'], "content": r['content']} for r in historico]
+
+st.title(f"🧠 Rike - {chat_selecionado}")
+
+# Exibir histórico
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# --- 5. PROCESSAMENTO DE MENSAGENS ---
-if prompt := st.chat_input("Fale com sua IA..."):
-    # 1. Mostra a mensagem do usuário
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # 2. Salva na planilha imediatamente
-    try:
-        sheet.append_row([st.session_state.nome_usuario, "user", prompt])
-    except:
-        pass
+# --- 5. ENTRADAS DE MÍDIA ---
+with st.sidebar:
+    st.divider()
+    foto = st.file_uploader("Enviar imagem para análise", type=["jpg", "png", "jpeg"])
+    st.audio_input("Entrada de áudio") # Captura de voz
 
-    # 3. Resposta do Rike
+if foto:
+    with st.spinner("Rike está 'olhando' a imagem..."):
+        res_visao = analisar_foto(foto)
+        st.chat_message("assistant").write(res_visao)
+        if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "assistant", res_visao])
+
+# --- 6. CHAT DE TEXTO ---
+if prompt := st.chat_input("Fale com o Rike..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+    if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "user", prompt])
+
     with st.chat_message("assistant"):
-        instrucao = f"Seu nome é Rike. Você é o parceiro intelectual de {st.session_state.nome_usuario}. Seja adaptativo e argumentativo."
-        
         try:
-            chat_completion = client_groq.chat.completions.create(
-                messages=[{"role": "system", "content": instrucao}] + st.session_state.messages,
+            chat_comp = client.chat.completions.create(
+                messages=[{"role": "system", "content": PROMPT_SISTEMA}] + st.session_state.messages,
                 model="llama-3.3-70b-versatile",
-                temperature=0.8
+                temperature=0.85
             )
-            
-            resposta = chat_completion.choices[0].message.content
-            st.markdown(resposta)
-            
-            # 4. Salva a resposta na planilha
-            sheet.append_row([st.session_state.nome_usuario, "assistant", resposta])
+            resposta = chat_comp.choices[0].message.content
+            st.write(resposta)
+            if sheet: sheet.append_row([st.session_state.nome_usuario, chat_selecionado, "assistant", resposta])
             st.session_state.messages.append({"role": "assistant", "content": resposta})
-            
         except Exception as e:
-            st.error(f"Erro na Groq: {e}")
+            st.error(f"Erro na resposta: {e}")
             
